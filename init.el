@@ -1,0 +1,424 @@
+;; bootstrap straight
+(defvar bootstrap-version)
+(let ((bootstrap-file
+       (expand-file-name
+        "straight/repos/straight.el/bootstrap.el"
+        (or (bound-and-true-p straight-base-dir)
+            user-emacs-directory)))
+      (bootstrap-version 7))
+  (unless (file-exists-p bootstrap-file)
+    (with-current-buffer
+        (url-retrieve-synchronously
+         "https://raw.githubusercontent.com/radian-software/straight.el/develop/install.el"
+         'silent 'inhibit-cookies)
+      (goto-char (point-max))
+      (eval-print-last-sexp)))
+  (load bootstrap-file nil 'nomessage))
+(straight-use-package 'use-package)
+(setq straight-use-package-by-default t)
+
+;; straight use pacakge for theme (exception)
+(straight-use-package
+ '(everforest
+   :type git
+   :host github
+   :repo "Theory-of-Everything/everforest-emacs"))
+(load-theme 'everforest-hard-dark t)
+
+(use-package emacs
+  :init
+
+  (defun my/apply-frame-settings (frame)
+    (with-selected-frame frame
+      (set-frame-parameter frame 'alpha 95)
+      (set-face-attribute 'default frame :font "JetBrainsMono Nerd Font-11")
+      (set-fringe-mode 10)))
+
+  (add-hook 'after-make-frame-functions #'my/apply-frame-settings)
+  (when (display-graphic-p)
+    (my/apply-frame-settings (selected-frame)))
+
+
+  (setq exec-path (append '("/usr/bin") exec-path))
+  (setq-default tab-width 2
+		            standard-indent 2
+		            indent-tabs-mode nil)
+
+  (setq inhibit-startup-message t
+        display-line-numbers-type 'relative
+        display-line-numbers-width 4
+        ring-bell-function 'ignore
+        help-window-select t
+        word-wrap nil
+        auto-hscroll-mode nil
+        auto-window-vscroll nil
+        top-margin-width 1
+        gc-cons-threshold 100000000)
+
+  (global-so-long-mode 1)
+  (electric-pair-mode 1)
+  (electric-indent-mode 1)
+
+
+  :bind
+  (("C-x k" . kill-current-buffer)
+   ("C-c t" . vterm)
+   ("C-c SPC" . completion-at-point)))
+
+(use-package consult
+  :demand t
+  ;; Replace bindings. Lazily loaded by `use-package'.
+  :bind (;; C-c bindings in `mode-specific-map'
+         ("C-c M-x" . consult-mode-command)
+         ("C-c h" . consult-history)
+         ("C-c k" . consult-kmacro)
+         ("C-c m" . consult-man)
+         ("C-c i" . consult-info)
+         ([remap Info-search] . consult-info)
+         ;; C-x bindings in `ctl-x-map'
+         ("C-x M-:" . consult-complex-command)     ;; orig. repeat-complex-command
+         ("C-x b" . consult-buffer)                ;; orig. switch-to-buffer
+         ("C-x C-b" . consult-buffer)
+         ("C-x 4 b" . consult-buffer-other-window) ;; orig. switch-to-buffer-other-window
+         ("C-x 5 b" . consult-buffer-other-frame)  ;; orig. switch-to-buffer-other-frame
+         ("C-x t b" . consult-buffer-other-tab)    ;; orig. switch-to-buffer-other-tab
+         ("C-x r b" . consult-bookmark)            ;; orig. bookmark-jump
+         ("C-x p b" . consult-project-buffer)      ;; orig. project-switch-to-buffer
+         ;; Custom M-# bindings for fast register access
+         ("M-#" . consult-register-load)
+         ("M-'" . consult-register-store)          ;; orig. abbrev-prefix-mark (unrelated)
+         ("C-M-#" . consult-register)
+         ;; Other custom bindings
+         ("M-y" . consult-yank-pop)                ;; orig. yank-pop
+         ;; M-g bindings in `goto-map'
+         ("M-g e" . consult-compile-error)
+         ("M-g r" . consult-grep-match)
+         ("M-g f" . consult-flymake)               ;; Alternative: consult-flycheck
+         ("M-g g" . consult-goto-line)             ;; orig. goto-line
+         ("M-g M-g" . consult-goto-line)           ;; orig. goto-line
+         ("M-g o" . consult-outline)               ;; Alternative: consult-org-heading
+         ("M-g m" . consult-mark)
+         ("M-g k" . consult-global-mark)
+         ("M-g i" . consult-imenu)
+         ("M-g I" . consult-imenu-multi)
+         ;; M-s bindings in `search-map'
+         ("M-s d" . consult-find)                  ;; Alternative: consult-fd
+         ("M-s c" . consult-locate)
+         ("M-s g" . consult-grep)
+         ("M-s G" . consult-git-grep)
+         ("M-s r" . consult-ripgrep)
+         ("M-s l" . consult-line)
+         ("M-s L" . consult-line-multi)
+         ("M-s k" . consult-keep-lines)
+         ("M-s u" . consult-focus-lines)
+         ;; Isearch integration
+         ("M-s e" . consult-isearch-history)
+         :map isearch-mode-map
+         ("M-e" . consult-isearch-history)         ;; orig. isearch-edit-string
+         ("M-s e" . consult-isearch-history)       ;; orig. isearch-edit-string
+         ("M-s l" . consult-line)                  ;; needed by consult-line to detect isearch
+         ("M-s L" . consult-line-multi)            ;; needed by consult-line to detect isearch
+         ;; Minibuffer history
+         :map minibuffer-local-map
+         ("M-s" . consult-history)                 ;; orig. next-matching-history-element
+         ("M-r" . consult-history))                ;; orig. previous-matching-history-element
+
+  ;; The :init configuration is always executed (Not lazy)
+  :init
+
+  ;; Tweak the register preview for `consult-register-load',
+  ;; `consult-register-store' and the built-in commands.  This improves the
+  ;; register formatting, adds thin separator lines, register sorting and hides
+  ;; the window mode line.
+  (advice-add #'register-preview :override #'consult-register-window)
+  (setq register-preview-delay 0.5)
+
+  ;; Use Consult to select xref locations with preview
+  (setq xref-show-xrefs-function #'consult-xref
+        xref-show-definitions-function #'consult-xref)
+
+  ;; Configure other variables and modes in the :config section,
+  ;; after lazily loading the package.
+  :config
+
+  ;; Optionally configure preview. The default value
+  ;; is 'any, such that any key triggers the preview.
+  ;; (setq consult-preview-key 'any)
+  ;; (setq consult-preview-key "M-.")
+  ;; (setq consult-preview-key '("S-<down>" "S-<up>"))
+  ;; For some commands and buffer sources it is useful to configure the
+  ;; :preview-key on a per-command basis using the `consult-customize' macro.
+  (consult-customize
+   consult-theme :preview-key '(:debounce 0.2 any)
+   consult-ripgrep consult-git-grep consult-grep consult-man
+   consult-bookmark consult-recent-file consult-xref
+   consult-source-bookmark consult-source-file-register
+   consult-source-recent-file consult-source-project-recent-file
+   ;; :preview-key "M-."
+   :preview-key '(:debounce 0.4 any))
+
+  ;; Optionally configure the narrowing key.
+  ;; Both < and C-+ work reasonably well.
+  (setq consult-narrow-key "<") ;; "C-+"
+
+  ;; Optionally make narrowing help available in the minibuffer.
+  ;; You may want to use `embark-prefix-help-command' or which-key instead.
+  ;; (keymap-set consult-narrow-map (concat consult-narrow-key " ?") #'consult-narrow-help)
+  (setq consult-line-thing 'line
+        consult-debug t))
+
+(use-package evil
+  :demand t
+  :bind (("<escape>" . keyboard-escape-quit))
+  :init
+  (setq evil-undo-system 'undo-fu
+        evil-want-C-u-scroll t
+        evil-want-keybinding nil)
+  :config
+  (evil-mode 1))
+
+(use-package evil-collection
+  :after evil
+  :config (evil-collection-init))
+
+(use-package evil-commentary
+  :after evil
+  :config
+  (evil-commentary-mode))
+
+(with-eval-after-load 'evil
+  (evil-set-initial-state 'org-agenda-mode 'normal))
+
+(use-package dashboard
+  :config
+  (dashboard-setup-startup-hook)
+  (setq dashboard-display-icons-p t)
+  (setq dashboard-icon-type 'nerd-icons)
+  (setq dashboard-week-agenda t))
+
+
+(use-package orderless
+  :custom
+  (completion-styles '(orderless basic))
+  (completion-category-overrides '((file (styles partial-completion))))
+  (completion-pcm-leading-wildcard t))
+
+(use-package vertico 
+  :demand t
+  :init 
+  (vertico-mode)
+  :config
+  (setq vertico-count 20
+        vertico-resize nil
+        vertico-cycle t))
+
+(use-package marginalia
+  :bind (:map minibuffer-local-map ("M-A" . marginalia-cycle))
+  :init (marginalia-mode))
+
+(use-package doom-modeline
+  :init (doom-modeline-mode 1))
+
+(use-package nerd-icons-dired
+  :hook (dired-mode . nerd-icons-dired-mode))
+
+(use-package magit)
+
+(use-package git-gutter
+  :hook (prog-mode . git-gutter-mode)
+  :config (setq git-gutter:update-interval 1))
+
+(use-package git-gutter-fringe
+  :config
+  (define-fringe-bitmap 'git-gutter-fr:added [224] nil nil '(center repeated))
+  (define-fringe-bitmap 'git-gutter-fr:modified [224] nil nil '(center repeated))
+  (define-fringe-bitmap 'git-gutter-fr:deleted [128 192 224 240] nil nil 'bottom))
+
+(defun efs/org-mode-setup () (org-indent-mode))
+
+(use-package org
+  :ensure nil
+  :hook (org-mode . efs/org-mode-setup)
+  :custom
+  (org-clock-persistence-insinuate)
+  :bind (("C-c c" . org-capture)
+         ("C-c a" . org-agenda)
+         ("C-c l" . org-store-link))
+  :init
+  (setq org-directory "~/org")
+  :config
+  (setq org-M-RET-may-split-line '((default . nil))
+        org-insert-heading-respect-content t
+        org-log-done 'time
+        org-log-into-drawer t
+        org-hide-emphasis-markers t
+        org-todo-keywords
+        '((sequence "TODO(t)" "WAIT(w!)" "CANCEL(c!)" "DONE(d!)")))
+
+  (setq org-agenda-files
+        (seq-filter
+         (lambda (f)
+           (not (string-match-p "/archive/" f)))
+         (directory-files-recursively org-directory "\\.org$")))
+
+  (setq org-agenda-custom-commands
+        '(("p" "Planning"
+           ((tags-todo "+@planning"
+                       ((org-agenda-overriding-header "Planning Tasks")))
+            (tags-todo "-{.*}"
+                       ((org-agenda-overriding-header "Untagged Tasks")))
+            (todo ".*" ((org-agenda-files '("~/org/inbox.org"))
+                        (org-agenda-overriding-header "Unprocessed Inbox Items")))))
+
+          ("d" "Daily Agenda"
+           ((agenda "" ((org-agenda-span 'day)
+                        (org-deadline-warning-days 7)))
+            (tags-todo "+PRIORITY=\"A\""
+                       ((org-agenda-overriding-header "High Priority Tasks")))))
+
+          ("w" "Weekly Review"
+           ((agenda ""
+                    ((org-agenda-overriding-header "Completed Tasks")
+                     (org-agenda-skip-function '(org-agenda-skip-entry-if 'nottodo 'done))
+                     (org-agenda-span 'week)))
+
+            (agenda ""
+                    ((org-agenda-overriding-header "Unfinished Scheduled Tasks")
+                     (org-agenda-skip-function '(org-agenda-skip-entry-if 'todo 'done))
+                     (org-agenda-span 'week)))))))
+  (setq org-clock-persist 'history)
+
+  (setq org-capture-templates
+        '(("t" "Todo" entry
+           (file+headline "~/org/inbox.org" "Tasks")
+           "* TODO %?\n  %i\n  %a")
+          ("j" "Journal" entry
+           (file+olp+datetree "~/org/journal.org")
+           "* %?\nEntered on %U\n  %i\n  %a"))))
+
+(use-package org-roam
+  :custom (org-roam-directory "~/org")
+  :bind (("C-c n l" . org-roam-buffer-toggle)
+         ("C-c n f" . org-roam-node-find)
+         ("C-c n i" . org-roam-node-insert))
+  :config (org-roam-setup))
+
+(use-package undo-fu)
+(use-package undo-fu-session
+  :after undo-fu
+  :config (undo-fu-session-global-mode))
+
+(use-package vterm)
+
+(use-package docker
+  :bind ("C-c d" . docker))
+
+(use-package compile
+  :defer t
+  :hook ((compilation-filter . ansi-color-compilation-filter))
+  :config
+  (setopt compilation-scroll-output t)
+  (setopt compilation-ask-about-save nil)
+  (require 'ansi-color))
+
+
+(defun my/lsp-capf-setup ()
+  (add-hook 'completion-at-point-functions
+            #'lsp-completion-at-point nil t))
+
+(defun my/lsp-evil-bindings ()
+  "Setup evil-normal-state keybinds for lsp-enabled buffers."
+  (evil-local-set-key 'normal "gd" #'xref-find-definitions)
+  (evil-local-set-key 'normal "gr" #'xref-find-references)
+  (evil-local-set-key 'normal "gi" #'xref-find-implementations)
+  (evil-local-set-key 'normal "gt" #'xref-find-type-definitions)
+  (evil-local-set-key 'normal "rn" #'lsp-rename))
+
+(use-package lsp-mode
+  :commands (lsp lsp-deferred)
+  :hook ((prog-mode . lsp-deferred)
+         (lsp-completion-mode . my/lsp-capf-setup)
+         (lsp-mode . my/lsp-evil-bindings))
+  :custom
+  (read-process-output-max (* 1024 1024))
+  (lsp-headerline-breadcrumb-enable nil)
+  (lsp-warn-no-matched-clients nil)
+  (lsp-completion-no-cache t)
+  (lsp-idle-delay 0.2)
+  (lsp-keymap-prefix "C-c l")
+  (lsp-diagnostics-provider :auto))
+
+(use-package lsp-ui
+  :commands lsp-ui-mode
+  :hook (lsp-mode . lsp-ui-mode)
+  :custom
+  (lsp-ui-sideline-enable t)
+  (lsp-ui-sideline-show-diagnostics t)
+  (lsp-ui-sideline-show-code-actions nil)
+  (lsp-ui-sideline-show-hover nil)
+  (lsp-ui-doc-enable nil)
+  (lsp-ui-sideline-delay 0))
+
+(use-package dap-mode)
+
+(use-package corfu
+  :custom
+  (corfu-cycle t)
+  (corfu-auto t)
+  (corfu-auto-prefix 2)
+  (corfu-auto-delay 0.3)
+  (corfu-popupinfo-delay '(0 . 0))
+  (corfu-preview-current 'insert)
+  (corfu-preselect 'prompt)
+  (corfu-on-exact-match t)
+  :bind
+  (:map corfu-map
+        ("C-n" . corfu-next)
+        ("C-p" . corfu-previous)
+        ("RET" . corfu-insert)
+        ("TAB" . corfu-insert)
+        ("SPC"  . corfu-insert))
+  :init
+  (global-corfu-mode)
+  (corfu-history-mode))
+
+(use-package nerd-icons-corfu
+  :after corfu
+  :init
+  (add-to-list 'corfu-margin-formatters
+               #'nerd-icons-corfu-formatter))
+
+(use-package apheleia
+  :hook (prog-mode . apheleia-mode)
+  :init
+  (setq apheleia-formatters-respect-project-root t)
+  :config
+  (setf (alist-get 'prettier apheleia-formatters)
+        '("npx" "prettier" "--stdin-filepath" filepath)))
+
+(use-package treesit-auto
+  :custom
+  (treesit-auto-install 'prompt)
+  :config
+  (setq treesit-auto-langs '(javascript typescript tsx css html))
+  (treesit-auto-add-to-auto-mode-alist
+   '(javascript typescript tsx css html))
+  (global-treesit-auto-mode))
+
+(use-package perspective
+  :demand t
+  :custom
+  (persp-mode-prefix-key (kbd "C-c M-p"))
+  :init
+  (persp-mode)
+  :config
+  (add-hook 'kill-emacs-hook #'persp-state-save)
+  (with-eval-after-load 'consult
+    (consult-customize consult-source-buffer
+                       :hidden t
+                       :default nil)
+
+    (add-to-list 'consult-buffer-sources
+                 persp-consult-source)))
+
+(use-package go-mode)
