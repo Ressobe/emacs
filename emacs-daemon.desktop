@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Emacs Daemon
+Comment=Start Emacs daemon after login
+Exec=env emacs --daemon
+X-GNOME-Autostart-enabled=true
+NoDisplay=false
