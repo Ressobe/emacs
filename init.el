@@ -27,7 +27,6 @@
 
 (use-package emacs
   :init
-
   (defun my/apply-frame-settings (frame)
     (with-selected-frame frame
       (set-frame-parameter frame 'alpha 95)
@@ -59,7 +58,6 @@
   (electric-pair-mode 1)
   (electric-indent-mode 1)
 
-
   :bind
   (("C-x k" . kill-current-buffer)
    ("C-c t" . vterm)
@@ -67,7 +65,6 @@
 
 (use-package consult
   :demand t
-  ;; Replace bindings. Lazily loaded by `use-package'.
   :bind (;; C-c bindings in `mode-specific-map'
          ("C-c M-x" . consult-mode-command)
          ("C-c h" . consult-history)
@@ -125,45 +122,10 @@
 
   ;; The :init configuration is always executed (Not lazy)
   :init
-
-  ;; Tweak the register preview for `consult-register-load',
-  ;; `consult-register-store' and the built-in commands.  This improves the
-  ;; register formatting, adds thin separator lines, register sorting and hides
-  ;; the window mode line.
-  (advice-add #'register-preview :override #'consult-register-window)
-  (setq register-preview-delay 0.5)
-
   ;; Use Consult to select xref locations with preview
   (setq xref-show-xrefs-function #'consult-xref
         xref-show-definitions-function #'consult-xref)
-
-  ;; Configure other variables and modes in the :config section,
-  ;; after lazily loading the package.
   :config
-
-  ;; Optionally configure preview. The default value
-  ;; is 'any, such that any key triggers the preview.
-  ;; (setq consult-preview-key 'any)
-  ;; (setq consult-preview-key "M-.")
-  ;; (setq consult-preview-key '("S-<down>" "S-<up>"))
-  ;; For some commands and buffer sources it is useful to configure the
-  ;; :preview-key on a per-command basis using the `consult-customize' macro.
-  (consult-customize
-   consult-theme :preview-key '(:debounce 0.2 any)
-   consult-ripgrep consult-git-grep consult-grep consult-man
-   consult-bookmark consult-recent-file consult-xref
-   consult-source-bookmark consult-source-file-register
-   consult-source-recent-file consult-source-project-recent-file
-   ;; :preview-key "M-."
-   :preview-key '(:debounce 0.4 any))
-
-  ;; Optionally configure the narrowing key.
-  ;; Both < and C-+ work reasonably well.
-  (setq consult-narrow-key "<") ;; "C-+"
-
-  ;; Optionally make narrowing help available in the minibuffer.
-  ;; You may want to use `embark-prefix-help-command' or which-key instead.
-  ;; (keymap-set consult-narrow-map (concat consult-narrow-key " ?") #'consult-narrow-help)
   (setq consult-line-thing 'line
         consult-debug t))
 
@@ -226,7 +188,7 @@
 
 (use-package git-gutter
   :hook (prog-mode . git-gutter-mode)
-  :config (setq git-gutter:update-interval 1))
+  :config (setq git-gutter:update-interval 0.2))
 
 (use-package git-gutter-fringe
   :config
@@ -310,6 +272,71 @@
 
 (use-package vterm)
 
+(use-package eshell
+  :ensure nil
+  :commands (eshell)
+  :bind (("C-`" . my/toggle-eshell))
+
+  :init
+  (defvar my/eshell-buffer-name "*eshell-toggle*")
+  (defvar my/eshell-window-height 0.3)
+  (defun my/toggle-eshell ()
+    "Toggle eshell in a bottom side window."
+    (interactive)
+    (let* ((buf (get-buffer my/eshell-buffer-name))
+           (win (and buf (get-buffer-window buf))))
+      (if win
+          (delete-window win)
+        (progn
+          (unless buf
+            (setq buf
+                  (save-window-excursion
+                    (eshell)
+                    (rename-buffer my/eshell-buffer-name t)
+                    (current-buffer))))
+          (display-buffer-in-side-window
+           buf
+           `((side . bottom)
+             (slot . 0)
+             (window-height . ,my/eshell-window-height)))
+          (select-window (get-buffer-window buf))
+          (goto-char (point-max))
+          (when (bound-and-true-p evil-mode)
+            (evil-insert-state))))))
+
+  :config
+  (setq eshell-history-size 10000
+        eshell-hist-ignoredups t
+        eshell-scroll-to-bottom-on-input t
+        eshell-scroll-to-bottom-on-output t
+        eshell-scroll-show-maximum-output t
+        eshell-destroy-buffer-when-process-dies t
+        eshell-buffer-maximum-lines 10000
+        eshell-prefer-lisp-functions nil)
+
+  (add-hook 'eshell-mode-hook
+            (lambda ()
+              (setq-local truncate-lines t)
+              (setq-local scroll-margin 0)))
+
+  (setq eshell-banner-message "")
+
+  (setq eshell-prompt-function
+        (lambda ()
+          (concat
+           (propertize
+            (abbreviate-file-name (eshell/pwd))
+            'face '(:foreground "#7fbbb3"))
+           (propertize " λ "
+                       'face '(:foreground "#a7c080")))))
+
+  (setq eshell-prompt-regexp "^[^λ]* λ ")
+
+  (defun eshell/clear ()
+    "Clear eshell buffer safely."
+    (let ((inhibit-read-only t))
+      (erase-buffer))))
+
 (use-package docker
   :bind ("C-c d" . docker))
 
@@ -366,7 +393,7 @@
   (corfu-cycle t)
   (corfu-auto t)
   (corfu-auto-prefix 2)
-  (corfu-auto-delay 0.3)
+  (corfu-auto-delay 0.2)
   (corfu-popupinfo-delay '(0 . 0))
   (corfu-preview-current 'insert)
   (corfu-preselect 'prompt)
@@ -408,11 +435,25 @@
 (use-package perspective
   :demand t
   :custom
-  (persp-mode-prefix-key (kbd "C-c M-p"))
+  (persp-mode-prefix-key (kbd "C-c p"))
+  (persp-state-default-file
+   (expand-file-name "perspectives-state.el" user-emacs-directory))
   :init
   (persp-mode)
   :config
-  (add-hook 'kill-emacs-hook #'persp-state-save)
+  (defun my/persp-auto-save (&rest _)
+    (when (and persp-state-default-file
+               (stringp persp-state-default-file))
+      (persp-state-save persp-state-default-file)))
+
+  (add-hook 'kill-emacs-hook #'my/persp-auto-save)
+  (add-hook 'delete-frame-functions #'my/persp-auto-save)
+  (add-hook 'emacs-startup-hook
+            (lambda ()
+              (when (and persp-state-default-file
+                         (file-exists-p persp-state-default-file))
+                (persp-state-load persp-state-default-file))))
+
   (with-eval-after-load 'consult
     (consult-customize consult-source-buffer
                        :hidden t
@@ -422,3 +463,5 @@
                  persp-consult-source)))
 
 (use-package go-mode)
+(use-package zig-mode)
+(use-package templ-ts-mode)
