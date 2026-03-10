@@ -25,6 +25,13 @@
    :repo "Theory-of-Everything/everforest-emacs"))
 (load-theme 'everforest-hard-dark t)
 
+;; (straight-use-package
+;;  '(gruvbox-theme
+;;    :type git
+;;    :host github
+;;    :repo "greduan/emacs-theme-gruvbox"))
+;; (load-theme 'gruvbox-dark-medium)
+
 (use-package emacs
   :init
   (defun my/apply-frame-settings (frame)
@@ -248,6 +255,8 @@
                     ((org-agenda-overriding-header "Unfinished Scheduled Tasks")
                      (org-agenda-skip-function '(org-agenda-skip-entry-if 'todo 'done))
                      (org-agenda-span 'week)))))))
+
+
   (setq org-clock-persist 'history)
 
   (setq org-capture-templates
@@ -265,6 +274,12 @@
          ("C-c n i" . org-roam-node-insert))
   :config (org-roam-setup))
 
+
+(use-package org-bullets
+  :hook (org-mode . org-bullets-mode)
+  :custom
+  (org-bullets-bullet-list '("◉" "○" "●" "○" "●" "○" "●")))
+
 (use-package undo-fu)
 (use-package undo-fu-session
   :after undo-fu
@@ -275,51 +290,105 @@
 (use-package eshell
   :ensure nil
   :commands (eshell)
-  :bind (("C-`" . my/toggle-eshell))
+  :bind (("C-`" . my/eshell-toggle)
+         ("C-c e" . my/eshell-switch))
 
   :init
-  (defvar my/eshell-buffer-name "*eshell-toggle*")
   (defvar my/eshell-window-height 0.3)
-  (defun my/toggle-eshell ()
-    "Toggle eshell in a bottom side window."
+  (defvar my/eshell-last-buffer nil)
+
+  ;; --------------------------------
+  ;; helpers
+  ;; --------------------------------
+
+  (defun my/eshell--buffer-name (name)
+    (format "*eshell:%s*" name))
+
+  (defun my/eshell--get-or-create (name)
+    (let* ((buf-name (my/eshell--buffer-name name))
+           (buf (get-buffer buf-name)))
+      (unless buf
+        (setq buf
+              (save-window-excursion
+                (eshell)
+                (rename-buffer buf-name t)
+                (current-buffer))))
+      buf))
+
+  (defun my/eshell--display (buf)
+    ;; przypisz bufor do aktualnej perspective
+    (when (bound-and-true-p persp-mode)
+      (persp-add-buffer buf))
+
+    (display-buffer-in-side-window
+     buf
+     `((side . bottom)
+       (slot . 0)
+       (window-height . ,my/eshell-window-height)))
+
+    (select-window (get-buffer-window buf))
+    (goto-char (point-max))
+
+    (when (bound-and-true-p evil-mode)
+      (evil-insert-state)))
+
+  ;; --------------------------------
+  ;; toggle current / last
+  ;; --------------------------------
+
+  (defun my/eshell-toggle ()
     (interactive)
-    (let* ((buf (get-buffer my/eshell-buffer-name))
-           (win (and buf (get-buffer-window buf))))
-      (if win
-          (delete-window win)
-        (progn
-          (unless buf
-            (setq buf
-                  (save-window-excursion
-                    (eshell)
-                    (rename-buffer my/eshell-buffer-name t)
-                    (current-buffer))))
-          (display-buffer-in-side-window
-           buf
-           `((side . bottom)
-             (slot . 0)
-             (window-height . ,my/eshell-window-height)))
-          (select-window (get-buffer-window buf))
-          (goto-char (point-max))
-          (when (bound-and-true-p evil-mode)
-            (evil-insert-state))))))
+    (let* ((current (current-buffer))
+           (is-eshell (derived-mode-p 'eshell-mode))
+           (target
+            (cond
+             ;; jeśli jesteś w eshellu → toggle jego
+             (is-eshell current)
+             ;; jeśli nie → użyj ostatniego
+             (my/eshell-last-buffer my/eshell-last-buffer)
+             ;; fallback → stwórz main
+             (t (my/eshell--get-or-create "main")))))
+      
+      (setq my/eshell-last-buffer target)
+
+      (let ((win (get-buffer-window target)))
+        (if win
+            (delete-window win)
+          (my/eshell--display target)))))
+
+  ;; --------------------------------
+  ;; switch / create
+  ;; --------------------------------
+
+  (defun my/eshell-switch ()
+    (interactive)
+    (let* ((buffers (seq-filter
+                     (lambda (b)
+                       (with-current-buffer b
+                         (derived-mode-p 'eshell-mode)))
+                     (buffer-list)))
+           (names (mapcar
+                   (lambda (b)
+                     (string-remove-prefix
+                      "*eshell:"
+                      (string-remove-suffix "*"
+                                            (buffer-name b))))
+                   buffers))
+           (choice (completing-read "Eshell: " names nil nil)))
+      (let ((buf (my/eshell--get-or-create choice)))
+        (setq my/eshell-last-buffer buf)
+        (my/eshell--display buf))))
+
+  ;; --------------------------------
+  ;; eshell config
+  ;; --------------------------------
 
   :config
   (setq eshell-history-size 10000
-        eshell-hist-ignoredups t
         eshell-scroll-to-bottom-on-input t
         eshell-scroll-to-bottom-on-output t
-        eshell-scroll-show-maximum-output t
         eshell-destroy-buffer-when-process-dies t
-        eshell-buffer-maximum-lines 10000
-        eshell-prefer-lisp-functions nil)
-
-  (add-hook 'eshell-mode-hook
-            (lambda ()
-              (setq-local truncate-lines t)
-              (setq-local scroll-margin 0)))
-
-  (setq eshell-banner-message "")
+        eshell-banner-message "")
 
   (setq eshell-prompt-function
         (lambda ()
@@ -332,10 +401,10 @@
 
   (setq eshell-prompt-regexp "^[^λ]* λ ")
 
-  (defun eshell/clear ()
-    "Clear eshell buffer safely."
-    (let ((inhibit-read-only t))
-      (erase-buffer))))
+  ;; zapamiętuj ostatni aktywny
+  (add-hook 'eshell-mode-hook
+            (lambda ()
+              (setq my/eshell-last-buffer (current-buffer)))))
 
 (use-package docker
   :bind ("C-c d" . docker))
@@ -461,6 +530,52 @@
 
     (add-to-list 'consult-buffer-sources
                  persp-consult-source)))
+
+(use-package newsticker
+  :ensure nil
+  :commands (newsticker-show-news)
+  :init
+
+  ;; --- CSV loader ---
+  (defun my/newsticker-load-youtube-csv (file)
+    "Load YouTube channels from CSV and return newsticker feed list."
+    (when (file-exists-p file)
+      (with-temp-buffer
+        (insert-file-contents file)
+        (let (feeds)
+          (dolist (line (split-string (buffer-string) "\n" t))
+            (unless (string-prefix-p "#" line) ;; allow comments
+              (let* ((parts (split-string line ","))
+                     (name (string-trim (car parts)))
+                     (id   (string-trim (cadr parts))))
+                (when (and name id)
+                  (push
+                   (list (concat "YouTube - " name)
+                         (format "https://www.youtube.com/feeds/videos.xml?channel_id=%s" id)
+                         nil nil nil)
+                   feeds)))))
+          (nreverse feeds)))))
+
+  (let* ((csv-file (expand-file-name "rss/youtube.csv"
+                                     user-emacs-directory))
+         (youtube-feeds (my/newsticker-load-youtube-csv csv-file)))
+
+    (setq newsticker-url-list
+          (append
+           '(("Hacker News"
+              "https://hnrss.org/frontpage"
+              nil nil nil))
+           youtube-feeds)))
+
+  (setq newsticker-retrieval-interval 900)
+
+  (defun my/close-newsticker ()
+    "Kill all tree-view related buffers."
+    (kill-buffer "*Newsticker List*")
+    (kill-buffer "*Newsticker Item*")
+    (kill-buffer "*Newsticker Tree*"))
+
+  (advice-add 'newsticker-treeview-quit :after 'my/close-newsticker))
 
 (use-package go-mode)
 (use-package zig-mode)
